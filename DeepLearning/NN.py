@@ -23,8 +23,8 @@ class Softmax():
         # Minus z with max value of z to avoid overflow of e^z
         # z.shape = (num_class, batch)
         # output.shape = (num_class, batch)
-        exp_values = np.exp(z - np.max(z, axis=1, keepdims=True))
-        return exp_values / np.sum(exp_values, axis = 1, keepdims=True) 
+        output = np.exp(z) / np.sum(np.exp(z), axis = 0, keepdims=True) 
+        return output
 
 class BinaryCrossEntropy:
     def forward(self, y_pred, y):
@@ -55,7 +55,7 @@ class Flatten:
 
 class Dense:
     def __init__(self, n_inputs, n_neurons, activation):
-        self.weights = np.random.randn(n_inputs, n_neurons) * 0.01   #Create 2D-weights from gaussian disstricution (n_inputs x n_neurons)
+        self.weights = np.random.randn(n_inputs, n_neurons) * 0.1  #Create 2D-weights from gaussian disstricution (n_inputs x n_neurons)
         self.d_weights = None
         self.bias = np.zeros((1,n_neurons))   #Create array bias lenth
         self.d_bias = None
@@ -111,17 +111,25 @@ class Dense:
             #w(L)T * dL/dz(L)
             self.d_input = np.dot(self.weights, d_values)
 
-            print(f"weights: {self.weights.shape} bias:{self.bias.shape}")
-            print(f"d_weights: {self.d_weights.shape} d_bias:{self.d_bias.shape}")
             return self.d_input
     
-class SDG:
+class StochasticGradientDescent:
     def __init__(self, learning_rate=0.1):
         self.learning_rate = learning_rate
     def update(self, layers):
         for layer in layers:
             layer.weights -= layer.d_weights * self.learning_rate
             layer.bias -= layer.d_bias * self.learning_rate
+
+class MinibatchGradientDescent:
+    def __init__(self, learning_rate=0.1):
+        self.learning_rate = learning_rate
+    def update(self, layers):
+        for layer in layers:
+            layer.weights -= layer.d_weights * self.learning_rate
+            layer.bias -= layer.d_bias * self.learning_rate
+
+        return layers
 
 
 class Model:
@@ -133,40 +141,36 @@ class Model:
 
     def fit(self,x,y,epochs):
         for epoch in range(epochs):
-            print(f"epoch {epoch}")
             # 1. FORWARD PASS
             output = x
             for layer in self.layers:
                 output = layer.forward(output)
-                print(output.shape)
+
+            test = self.loss.forward(output,y)
 
             # 2. CALCULATE LOSS
             #recent layer is final layer
             if isinstance(self.loss, CategoricalCrossEntropy) and isinstance(self.layers[-1].activation, Softmax):
                 #Softmax combine with CrossEntropy: dC/da_(L-1)(i) = a_(L)(i) - y_i (value a_(L) is softmax layer, a_(L-1) is previous layer)
                 self.loss_value = output - y
-                print("yes")
-            else:
-                print("no")
 
             # 3. BACKWARD PASS
             # Start the chain with the loss gradient
             d_values = self.loss_value
-
-            print(f"d_values:{d_values.shape}")
+            #print(f"self.loss_value: {self.loss_value}")
 
             for layer in reversed(self.layers[:-1]):
                 d_values = layer.backward(d_values)
-                print(f"d_values:{d_values.shape}")
 
             # 4. UPDATE WEIGHTS AND BIAS
             #self.optimizer.update(self.layers)
             for layer in self.layers[:-1]:
                 d_weights = layer.d_weights
                 d_bias = layer.bias
-                print(f"d_weights:{d_weights.shape} d_bias:{d_bias.shape}")
                 layer.weights -= d_weights.T * 0.1
                 layer.bias -= d_bias * 0.1
+
+        return test
 
     def save(self, filename):
         model_data = []
