@@ -1,6 +1,6 @@
 import numpy as np
-import math
 import pickle
+
 
 class ReLU():
     def forward(self, z):
@@ -113,24 +113,19 @@ class Dense:
 
             return self.d_input
     
-class StochasticGradientDescent:
+class SGD:
     def __init__(self, learning_rate=0.1):
         self.learning_rate = learning_rate
+        self.layers = None
+
     def update(self, layers):
-        for layer in layers:
-            layer.weights -= layer.d_weights * self.learning_rate
+        self.layers = layers
+
+        for layer in self.layers[:-1]:
+            layer.weights -= layer.d_weights.T * self.learning_rate
             layer.bias -= layer.d_bias * self.learning_rate
 
-class MinibatchGradientDescent:
-    def __init__(self, learning_rate=0.1):
-        self.learning_rate = learning_rate
-    def update(self, layers):
-        for layer in layers:
-            layer.weights -= layer.d_weights * self.learning_rate
-            layer.bias -= layer.d_bias * self.learning_rate
-
-        return layers
-
+        return self.layers
 
 class Model:
     def __init__(self, layers=None, loss_function=None, optimizer=None):
@@ -138,39 +133,72 @@ class Model:
         self.loss = loss_function
         self.optimizer = optimizer
         self.loss_value = None
+        self.epoch_loss_value = None
+        self.save_loss_value = None
 
-    def fit(self,x,y,epochs):
+    def fit(self, x_train, y_train, batch_size, epochs, x_validation = None, y_validation = None):
+        self.save_loss_value = np.zeros(epochs)
         for epoch in range(epochs):
             # 1. FORWARD PASS
-            output = x
-            for layer in self.layers:
-                output = layer.forward(output)
+            for iterations in range(1, x_train.shape[0] // batch_size):
+                x = x_train[(iterations - 1) * batch_size : iterations * batch_size]
+                y = y_train[(iterations - 1) * batch_size : iterations * batch_size]
 
-            test = self.loss.forward(output,y)
+                # output.shape = (inputs, batch)
+                # train_y = (one-hot encoding, batch)
+                output = x.T
+                train_y = y.T
 
-            # 2. CALCULATE LOSS
-            #recent layer is final layer
-            if isinstance(self.loss, CategoricalCrossEntropy) and isinstance(self.layers[-1].activation, Softmax):
-                #Softmax combine with CrossEntropy: dC/da_(L-1)(i) = a_(L)(i) - y_i (value a_(L) is softmax layer, a_(L-1) is previous layer)
-                self.loss_value = output - y
+                for layer in self.layers:
+                    output = layer.forward(output)
 
-            # 3. BACKWARD PASS
-            # Start the chain with the loss gradient
-            d_values = self.loss_value
-            #print(f"self.loss_value: {self.loss_value}")
+                test = self.loss.forward(output,train_y)
 
-            for layer in reversed(self.layers[:-1]):
-                d_values = layer.backward(d_values)
+                # 2. CALCULATE LOSS
+                #recent layer is final layer
+                if isinstance(self.loss, CategoricalCrossEntropy) and isinstance(self.layers[-1].activation, Softmax):
+                    #Softmax combine with CrossEntropy: dC/da_(L-1)(i) = a_(L)(i) - y_i (value a_(L) is softmax layer, a_(L-1) is previous layer)
+                    self.loss_value = output - train_y
 
-            # 4. UPDATE WEIGHTS AND BIAS
-            #self.optimizer.update(self.layers)
-            for layer in self.layers[:-1]:
-                d_weights = layer.d_weights
-                d_bias = layer.bias
-                layer.weights -= d_weights.T * 0.1
-                layer.bias -= d_bias * 0.1
+                # 3. BACKWARD PASS
+                # Start the chain with the loss gradient
+                d_values = self.loss_value
+                #print(f"self.loss_value: {self.loss_value}")
 
-        return test
+                for layer in reversed(self.layers):
+                    if not isinstance(layer.activation, Softmax):
+                        d_values = layer.backward(d_values)
+
+                # 4. UPDATE WEIGHTS AND BIAS
+                #self.optimizer.update(self.layers)
+                self.layers = self.optimizer.update(self.layers)
+
+            # TODO: making check validation of model
+            if not x_validation.all():
+                output_validation = x_validation.T
+                # y_validation.shape = batch, one-hot
+
+                for layer in self.layers:
+                    output_validation = layer.forward(output_validation)
+                
+                output_validation = np.argmax(output_validation, axis = 0)
+
+                correct_predict = 0
+                for i in range(output_validation.shape[0]):
+                    if y_validation[i][output_validation[i]] == 1: correct_predict += 1
+                
+                validation_accuracy = correct_predict / output_validation.shape[0]
+
+            else:
+                validation_accuracy = None
+
+            self.epoch_loss_value = (1/batch_size) * np.sum(test)
+
+            print(f"Epochs: {epoch + 1}/{epochs}    loss_value: {self.epoch_loss_value}     validation: {validation_accuracy}")
+            
+            self.save_loss_value[epoch] = (1/batch_size) * np.sum(test)
+        
+        return self.save_loss_value
 
     def save(self, filename):
         model_data = []
@@ -181,13 +209,13 @@ class Model:
                     'bias' : layer.bias 
                 })
 
-        with open(filename, 'wb') as f:
+        with open(f"{filename}.pkl", 'wb') as f:
             pickle.dump(model_data, f)
         
         print(f"Model saved to {filename}")
 
     def load(self, filename):
-        with open(filename, 'wb') as f:
+        with open(f"{filename}.pkl", 'rb') as f:
             model_data = pickle.load(f)
 
         data_index = 0
@@ -200,12 +228,13 @@ class Model:
         print(f"Model loaded from {filename}")
         
 
-    def predict(self,x):
-        output = x
+    def predict(self, x):
+        output = x.T
         for layer in self.layers:
             output = layer.forward(output)
         
-        return output
+        return {'prediction': np.argmax(output), 
+                'confidence': np.max(output)*100}
 
         
 

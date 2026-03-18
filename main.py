@@ -1,6 +1,5 @@
 from DeepLearning import NN
-from LossFunction import MSE
-from DeepLearning.NN import Dense, ReLU, Softmax, CategoricalCrossEntropy
+from DeepLearning.NN import Dense, SGD, ReLU, Softmax, CategoricalCrossEntropy
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -16,8 +15,16 @@ print("Shape of Y after separating features:", y.shape)
 x = x / 255.0
 x = np.array(x)
 
+x_train = x[:30000]
+x_valid = x[30000:]
+print("Shape of x:", x_train.shape, x_valid.shape)
+
 y = np.eye(10)[y]
-print("Shape of y after one-hot encoding:", y.shape)
+
+y_train = y[:30000]
+y_valid = y[30000:]
+print("Shape of y after one-hot encoding:", y_train.shape, y_valid.shape)
+print(y_train[:5])
 
 model = NN.Model(
     layers = [
@@ -27,15 +34,14 @@ model = NN.Model(
         Dense(10, 10, activation = Softmax())
     ],
     loss_function = CategoricalCrossEntropy(),
+    optimizer = SGD()
 )
 
-xpoints = np.arange(0,30)
-ypoints = np.zeros(30)
+BATCH_SIZE = 128
+loss_value = model.fit(x_train, y_train, BATCH_SIZE, epochs = 10, x_validation = x_valid, y_validation = y_valid)
 
-for i in range(1,30):
-    test_train_x = x[(i-1)*64:i*64]
-    test_train_y = y[(i-1)*64:i*64]
-    ypoints[i] = (1/64) * np.sum(model.fit(test_train_x.T,test_train_y.T, epochs = 10))
+print(loss_value)
+xpoints = np.arange(0,x.shape[0] // BATCH_SIZE)
+ypoints = np.zeros(x.shape[0] // BATCH_SIZE)
 
-plt.plot(xpoints, ypoints)
 
