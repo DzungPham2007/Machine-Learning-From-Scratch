@@ -1,4 +1,5 @@
-import cupy as np
+import numpy as np
+import cupy as cp
 import pickle
 
 
@@ -71,7 +72,7 @@ class MaxPooling:
     def calculate_conv2d_MaxPooling(inputs, filter_size, stride, input_shape = ()):
         # TODO: recheck maxpooling
         filter_height = filter_size[-2]
-        filter_ưidth = filter_size[-1]
+        filter_width = filter_size[-1]
         # inputs.shape = (batch_size, channel, height, width)
         batch_size, channel, height, width = inputs.shape
 
@@ -80,10 +81,10 @@ class MaxPooling:
         batch_stride, channel_stride, row_stride, column_stride = inputs.strides
 
         output_height = int((height - filter_height) / stride + 1)
-        output_width = int((width - filter_ưidth) / stride + 1)
+        output_width = int((width - filter_width) / stride + 1)
 
         # we divided each inputs into new matrix (output_height x output_width) each elements size kernel
-        new_shape = (batch_size, channel, output_height, output_width, filter_height, filter_ưidth)
+        new_shape = (batch_size, channel, output_height, output_width, filter_height, filter_width)
 
         # bit need to move between row/column/depth of new matrix
         new_stride = (batch_stride, channel_stride, row_stride * stride, column_stride * stride, row_stride, column_stride)
